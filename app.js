@@ -89,6 +89,55 @@
       objective: "First spacecraft in history to achieve a survivable soft landing on the Moon." }
   ];
 
+  // Additional curated landing sites (coordinates: NASA NSSDCA lunar landing site list / LROC-derived;
+  // entries flagged approx:true are target REGIONS whose exact touchdown point is not yet fixed/public).
+  MISSIONS.push(
+    { id: "im-3-reiner", name: "IM-3 — Reiner Gamma Target", agency: "NASA CLPS / Intuitive Machines", category: "planned", isCurrent: false, approx: true,
+      status: "Planned CLPS Delivery (Target Region)", lat: 7.5, lon: -59.0, region: "Reiner Gamma Swirl, Oceanus Procellarum",
+      objective: "Study a lunar swirl & local magnetic anomaly (Lunar Vertex payload)." },
+    { id: "ispace-m1", name: "ispace HAKUTO-R M1", agency: "ispace (Japan, commercial)", category: "historic", isCurrent: false, approx: true,
+      status: "Hard landing 25 Apr 2023", lat: 47.58, lon: 44.09, region: "Atlas Crater",
+      objective: "First private Japanese lander attempt; impact site imaged by LRO." },
+    { id: "apollo-12", name: "Apollo 12 (Ocean of Storms)", agency: "NASA", category: "historic", isCurrent: false,
+      status: "Historic · Landed 19 Nov 1969", lat: -3.01239, lon: -23.42157, region: "Oceanus Procellarum (Surveyor 3 site)",
+      objective: "Pinpoint landing beside Surveyor 3; 34.3 kg samples returned." },
+    { id: "apollo-14", name: "Apollo 14 (Fra Mauro)", agency: "NASA", category: "historic", isCurrent: false,
+      status: "Historic · Landed 5 Feb 1971", lat: -3.64530, lon: -17.47136, region: "Fra Mauro Highlands",
+      objective: "Sampled Imbrium-basin ejecta (Fra Mauro formation); 42.8 kg samples." },
+    { id: "apollo-16", name: "Apollo 16 (Descartes)", agency: "NASA", category: "historic", isCurrent: false,
+      status: "Historic · Landed 21 Apr 1972", lat: -8.97301, lon: 15.50019, region: "Descartes Highlands",
+      objective: "Only Apollo landing in the central lunar highlands; 95.8 kg samples." },
+    { id: "chang-e-3", name: "Chang'e-3 & Yutu", agency: "CNSA", category: "historic", isCurrent: false,
+      status: "Historic · Landed 14 Dec 2013", lat: 44.1214, lon: -19.5116, region: "Mare Imbrium",
+      objective: "China's first soft landing; Yutu rover & lunar-based ultraviolet telescope." },
+    { id: "chang-e-5", name: "Chang'e-5 (Sample Return)", agency: "CNSA", category: "historic", isCurrent: false,
+      status: "Historic · Landed 1 Dec 2020", lat: 43.0576, lon: -51.9161, region: "Mons Rümker, Oceanus Procellarum",
+      objective: "Returned 1,731 g of young (~2 Gyr) mare basalt samples." },
+    { id: "luna-16", name: "Luna 16 (Sample Return)", agency: "USSR", category: "historic", isCurrent: false,
+      status: "Historic · Landed 20 Sep 1970", lat: -0.5137, lon: 56.3638, region: "Mare Fecunditatis",
+      objective: "First robotic lunar sample return (101 g)." },
+    { id: "luna-24", name: "Luna 24 (Sample Return)", agency: "USSR", category: "historic", isCurrent: false,
+      status: "Historic · Landed 18 Aug 1976", lat: 12.7145, lon: 62.2129, region: "Mare Crisium",
+      objective: "Drilled a 2 m core and returned 170 g of samples." }
+  );
+
+  // Program groups used by the curated-site filters
+  const PROGRAM_OF = {
+    "apollo-11": "apollo", "apollo-12": "apollo", "apollo-14": "apollo", "apollo-15": "apollo", "apollo-16": "apollo", "apollo-17": "apollo",
+    "blue-ghost-1": "clps", "im-1": "clps", "im-2-athena": "clps", "im-3-reiner": "clps", "viper-mouton": "clps",
+    "ispace-m1": "commercial",
+    "malapert": "artemis", "haworth": "artemis", "nobile": "artemis", "cabeus": "artemis", "shackleton": "artemis"
+  };
+  MISSIONS.forEach((m) => { m.program = PROGRAM_OF[m.id] || "international"; });
+
+  function missionMatchesFilter(m, filter) {
+    if (filter === "all") return true;
+    if (filter === "apollo") return m.program === "apollo";
+    if (filter === "clps") return m.program === "clps" || m.program === "commercial";
+    if (filter === "international") return m.program === "international";
+    return m.category === filter;
+  }
+
   /* ---------- Lunar Selenographic Regions Catalog (3D Boundary Highlighting) ----------
    * Coordinates & angular radii sourced from IAU Planetary Nomenclature / NASA LRO Gazetteer. */
   const LUNAR_REGIONS = [
@@ -166,7 +215,8 @@
 
   // State
   let liveTelemetry = null; // Populated by NASA SVS Dial-a-Moon API if reachable
-  let simOffsetHours = 0;   // Scrubber offset from current time
+  let simOffsetHours = 0;   // Scrubber offset from the base epoch
+  let baseEpochMs = null;   // null = live "now"; otherwise a user-chosen landing date/time (UTC ms)
   let simTimer = null;
   let highlightCurrentMissions = true;
   let activeMissionFilter = "all";
@@ -175,7 +225,7 @@
 
   /* ---------- Astronomical & Selenographic Ephemeris Engine ---------- */
   function getSimDate() {
-    return new Date(Date.now() + simOffsetHours * 3600 * 1000);
+    return new Date((baseEpochMs === null ? Date.now() : baseEpochMs) + simOffsetHours * 3600 * 1000);
   }
 
   // NASA SVS Dial-A-Moon daily series (fetched via local proxy) + linear interpolation.
@@ -505,7 +555,7 @@
   let targetPin, markerGroup, regionHighlightGroup;
   const markerMeshes = [];
   let isDragging = false, dragDistance = 0, prevMouse = { x: 0, y: 0 };
-  let spherical = { radius: 2.32, theta: 0.35, phi: Math.PI / 2 };
+  let spherical = { radius: 2.85, theta: 0.35, phi: Math.PI / 2 };
 
   // Convert (lat, lon) in degrees to 3D unit sphere position (radius R)
   // Standard selenographic: lat=0, lon=0 faces +Z (toward Earth)
@@ -526,17 +576,34 @@
     return { lat, lon };
   }
 
+  function syncGlobeResolution() {
+    const container = $("globe-container");
+    if (!container || !renderer || !camera) return;
+    const rect = container.getBoundingClientRect();
+    const w = Math.max(1, Math.floor(rect.width || container.clientWidth || 600));
+    const h = Math.max(1, Math.floor(rect.height || container.clientHeight || 480));
+    const aspect = w / h;
+    const baseFov = 42;
+    // Automatically widen vertical FOV if container is narrower than tall so the Moon never clips horizontally
+    camera.fov = aspect < 1
+      ? rad2deg(2 * Math.atan(Math.tan(deg2rad(baseFov * 0.5)) / aspect))
+      : baseFov;
+    camera.aspect = aspect;
+    camera.updateProjectionMatrix();
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(w, h, false);
+  }
+
   function initGlobe() {
     const container = $("globe-container");
     const canvas = $("moon-canvas");
 
     scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 100);
+    camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
     updateCameraFromSpherical();
 
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: "high-performance" });
+    syncGlobeResolution();
 
     // Real NASA data, downloaded unmodified from NASA SVS #4720 (CGI Moon Kit) into ./assets:
     //   lroc_color_2k.jpg  - LROC WAC color mosaic (2048x1024, centred on 0 deg longitude)
@@ -727,12 +794,10 @@
       updateCameraFromSpherical();
     }, { passive: false });
 
-    window.addEventListener("resize", () => {
-      if (!container.clientWidth) return;
-      camera.aspect = container.clientWidth / container.clientHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(container.clientWidth, container.clientHeight);
-    });
+    window.addEventListener("resize", syncGlobeResolution);
+    if (typeof ResizeObserver !== "undefined") {
+      new ResizeObserver(() => syncGlobeResolution()).observe(container);
+    }
 
     function animate(t) {
       requestAnimationFrame(animate);
@@ -1058,8 +1123,24 @@
 
     renderWindowsCard(daylightWindows, sunElev, sunRateDegPerHr, simDate);
     $("window-summary").textContent += coverageNote();
-    drawSolarChart(samples);
     renderMissionsManifest(eph);
+
+    // Hand the computed state to the planner module (sky view, 2D map, power/comms, comparison, timeline)
+    const hook = window.SELENE && window.SELENE.afterUpdate;
+    if (typeof hook === "function") {
+      try {
+        hook({
+          simDate, eph, site: selectedSite, sunElev, sunRateDegPerHr, earthElev, hasDTE,
+          slope, dem, tempK, daylightWindows, samples,
+          verdict: vText.textContent, verdictClass: badge.classList.contains("go") ? "go" : badge.classList.contains("nogo") ? "nogo" : "caution"
+        });
+      } catch (err) {
+        console.error("Planner module error:", err);
+        drawSolarChart(samples);
+      }
+    } else {
+      drawSolarChart(samples);
+    }
   }
 
   function coverageNote() {
@@ -1224,7 +1305,7 @@
 
     // Filter & sort missions by proximity to currently selected coordinate
     const filtered = MISSIONS.filter((m) =>
-      activeMissionFilter === "all" ? true : m.category === activeMissionFilter
+      missionMatchesFilter(m, activeMissionFilter)
     );
     const ranked = filtered.map((m) => {
       const distDeg = greatCircleDeg(selectedSite.lat, selectedSite.lon, m.lat, m.lon);
@@ -1261,7 +1342,7 @@
     const chipRow = $("mission-chips");
     chipRow.innerHTML = "";
     MISSIONS.filter((m) =>
-      activeMissionFilter === "all" ? true : m.category === activeMissionFilter
+      missionMatchesFilter(m, activeMissionFilter)
     ).forEach((m) => {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -1372,6 +1453,7 @@
 
     $("btn-now").addEventListener("click", () => {
       stopSim();
+      baseEpochMs = null;
       simOffsetHours = 0;
       scrubber.value = "0";
       updateOffsetLabel();
@@ -1393,7 +1475,7 @@
     });
 
     $("btn-reset-cam").addEventListener("click", () => {
-      spherical = { radius: 2.32, theta: 0.35, phi: Math.PI / 2 };
+      spherical = { radius: 2.85, theta: 0.35, phi: Math.PI / 2 };
       updateCameraFromSpherical();
     });
   }
@@ -1407,13 +1489,27 @@
   }
 
   function updateOffsetLabel() {
-    if (simOffsetHours === 0) {
+    const d = getSimDate();
+    if (baseEpochMs === null && simOffsetHours === 0) {
       $("offset-label").textContent = "NOW (LIVE)";
+    } else if (simOffsetHours === 0) {
+      $("offset-label").textContent = `${fmtDateShort(d)} (Chosen Epoch)`;
     } else {
       const days = (simOffsetHours / 24).toFixed(1);
-      const d = getSimDate();
       $("offset-label").textContent = `+${days} Days (${fmtDateShort(d)})`;
     }
+  }
+
+  // Jump the planner to an absolute UTC epoch (used by the date picker, step buttons and timeline clicks)
+  function setEpoch(ms) {
+    if (!isFinite(ms)) return;
+    stopSim();
+    baseEpochMs = ms;
+    simOffsetHours = 0;
+    const scrub = $("time-offset");
+    if (scrub) scrub.value = "0";
+    updateOffsetLabel();
+    updateAnalysisUI();
   }
 
   function highlightPresetChip(id) {
@@ -1520,6 +1616,24 @@
     window.addEventListener("resize", resize);
     resize();
   }
+
+  /* ---------- Public API for the planner module (planner.js) ---------- */
+  window.SELENE = Object.assign(window.SELENE || {}, {
+    MISSIONS, LUNAR_REGIONS, SYNODIC_DAYS,
+    getEphemerisAt, calcSolarElevation, calcEarthElevation, estimateSurfaceTempK, demAt,
+    computeLandingWindows, formatCoord, fmtDateShort, missionMatchesFilter,
+    getSimDate,
+    isLive: () => baseEpochMs === null && simOffsetHours === 0,
+    getSelectedSite: () => selectedSite,
+    getActiveRegion: () => activeRegion,
+    getMissionFilter: () => activeMissionFilter,
+    selectMission: (m, rotate = true) => selectMission(m, rotate),
+    selectCustomCoordinate: (lat, lon, rotate = true) => selectCustomCoordinate(lat, lon, rotate),
+    setEpoch,
+    goLive: () => { stopSim(); baseEpochMs = null; simOffsetHours = 0; const s = $("time-offset"); if (s) s.value = "0"; updateOffsetLabel(); updateAnalysisUI(); },
+    refresh: () => updateAnalysisUI(),
+    resizeGlobe: () => window.dispatchEvent(new Event("resize"))
+  });
 
   /* ---------- Boot ---------- */
   window.addEventListener("DOMContentLoaded", () => {

@@ -40,6 +40,13 @@
       <div class="t-item live-pill">
         <i></i> <span id="feed-status">LIVE EPHEMERIS</span>
       </div>
+      <div class="t-item mode-toggle" role="group" aria-label="Audience mode">
+        <span class="t-label">AUDIENCE MODE</span>
+        <div class="seg">
+          <button id="mode-planner" type="button" class="seg-btn active" aria-pressed="true" title="Compact technical view for mission planners">🛠 Planner</button>
+          <button id="mode-learn" type="button" class="seg-btn" aria-pressed="false" title="Plain-language explanations for students, educators and the public">🎓 Learn</button>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -54,10 +61,15 @@
           <p class="instruction">Click anywhere on the 3D Moon or choose a mission marker to compute landing feasibility, solar windows, and surface stay duration.</p>
         </div>
         <div class="view-modes">
+          <div class="seg" role="group" aria-label="Map view">
+            <button id="view-3d" type="button" class="seg-btn active" aria-pressed="true">🌕 3D Globe</button>
+            <button id="view-2d" type="button" class="seg-btn" aria-pressed="false">🗺 2D Map</button>
+          </div>
           <button id="btn-highlight-current" class="chip-btn active" type="button" title="Highlight active/recent lunar missions on the 3D Moon">★ Highlight Current Missions</button>
           <button id="btn-reset-cam" class="chip-btn" type="button">Reset View</button>
         </div>
       </div>
+      <p class="learn-note">🎓 The bright side of the globe is where the Sun is shining right now. One full day–night cycle on the Moon lasts about 29.5 Earth days, so any spot gets roughly two weeks of sunlight followed by two weeks of darkness.</p>
 
       <!-- Marker Color Legend -->
       <div class="globe-legend" aria-label="3D Globe Marker Legend">
@@ -70,6 +82,13 @@
       <!-- 3D Viewport (Enlarged) -->
       <div id="globe-container" class="globe-viewport" aria-label="Interactive 3D Moon Globe">
         <canvas id="moon-canvas"></canvas>
+        <canvas id="map2d" class="map2d" width="1440" height="720" role="img" aria-label="2D equirectangular map of the Moon showing day and night, the terminator and Earth visibility" hidden></canvas>
+        <div id="map2d-legend" class="map2d-legend" hidden>
+          <span><i class="lg-term"></i> Terminator (sunrise/sunset line)</span>
+          <span><i class="lg-limb"></i> Earth horizon (Earth visible on the side with ⊕)</span>
+          <span><i class="lg-night"></i> Lunar night</span>
+          <span>☀ Sub-solar point · ⊕ Sub-Earth point · <b style="color:#fc3d21">●</b> Target · ①–④ Compared sites</span>
+        </div>
         <div id="marker-tooltip" class="marker-tooltip" hidden></div>
         <div id="current-mission-labels" class="current-mission-labels" aria-hidden="true"></div>
 
@@ -121,6 +140,22 @@
         </form>
 
         <div class="time-scrubber">
+          <div class="epoch-row">
+            <label class="c-field epoch-field">
+              <span>LANDING DATE &amp; TIME (UTC)</span>
+              <input id="epoch-input" type="datetime-local" step="60" aria-label="Landing date and time in UTC" />
+            </label>
+            <div class="epoch-steps" role="group" aria-label="Step simulation time">
+              <button type="button" class="mini-btn" data-step-h="-24" title="Back one Earth day">−1d</button>
+              <button type="button" class="mini-btn" data-step-h="-1" title="Back one hour">−1h</button>
+              <button type="button" class="mini-btn" data-step-h="1" title="Forward one hour">+1h</button>
+              <button type="button" class="mini-btn" data-step-h="24" title="Forward one Earth day">+1d</button>
+              <button type="button" class="mini-btn" data-step-h="708.734" title="Same local solar time, next lunar day (+1 synodic month)">+1 Lunar Day</button>
+              <button type="button" class="mini-btn" data-step-h="-708.734" title="Same local solar time, previous lunar day">−1 Lunar Day</button>
+              <button id="btn-jump-sunrise" type="button" class="mini-btn accent" title="Jump to the next local sunrise at the selected site">☀ Next Sunrise</button>
+              <button id="btn-jump-touchdown" type="button" class="mini-btn accent" title="Jump to the start of the next morning touchdown window">⊕ Next Touchdown Window</button>
+            </div>
+          </div>
           <div class="scrubber-head">
             <label for="time-offset">SIMULATION EPOCH OFFSET: <strong id="offset-label">NOW (LIVE)</strong></label>
             <div class="scrubber-actions">
@@ -146,6 +181,9 @@
               <button type="button" class="filter-pill" data-filter="current">★ Current Missions Only</button>
               <button type="button" class="filter-pill" data-filter="planned">Upcoming / Artemis</button>
               <button type="button" class="filter-pill" data-filter="historic">Historic Landings</button>
+              <button type="button" class="filter-pill" data-filter="apollo">Apollo</button>
+              <button type="button" class="filter-pill" data-filter="clps">CLPS &amp; Commercial</button>
+              <button type="button" class="filter-pill" data-filter="international">Other Countries</button>
             </div>
           </div>
           <div id="mission-chips" class="chip-row"></div>
@@ -194,6 +232,59 @@
             <small id="m-terrain">--</small>
           </div>
         </div>
+        <p id="plain-summary" class="plain-summary learn-only" aria-live="polite"></p>
+        <div class="decision-actions">
+          <button id="btn-add-compare" type="button" class="mini-btn accent">＋ Add Site to Comparison</button>
+          <span id="compare-count" class="compare-count">0 / 4 sites in comparison</span>
+        </div>
+      </div>
+
+      <!-- Sun & Earth Sky View at the selected site -->
+      <div class="card sky-card">
+        <div class="card-head">
+          <div>
+            <span class="card-tag">SUN &amp; EARTH POSITION AT THE SITE</span>
+            <h3>Local Sky View &amp; Time to Sunset / Earthset</h3>
+          </div>
+          <div class="seg" role="group" aria-label="Sky view style">
+            <button id="sky-pano" type="button" class="seg-btn active" aria-pressed="true">Horizon</button>
+            <button id="sky-dome" type="button" class="seg-btn" aria-pressed="false">Sky Dome</button>
+          </div>
+        </div>
+        <canvas id="sky-canvas" width="1040" height="300" role="img" aria-label="Sky view"></canvas>
+        <div class="sky-readouts">
+          <div class="m-box"><span class="m-label">☀ SUN (AZ / EL)</span><strong id="sky-sun-pos">--</strong><small id="sky-sun-note">--</small></div>
+          <div class="m-box"><span class="m-label">⏱ TIME TO SUNSET</span><strong id="sky-sunset">--</strong><small id="sky-sunset-at">--</small></div>
+          <div class="m-box"><span class="m-label">⊕ EARTH (AZ / EL)</span><strong id="sky-earth-pos">--</strong><small id="sky-earth-note">--</small></div>
+          <div class="m-box"><span class="m-label">⏱ TIME TO EARTHSET</span><strong id="sky-earthset">--</strong><small id="sky-earthset-at">--</small></div>
+        </div>
+        <p class="window-summary tiny">Dashed tracks: Sun over the next 15 days, Earth over the next 30 days (dots every 24 h). Flat horizon assumed — local hills and crater walls are not modelled, so real sunset/Earthset can come earlier, especially near the poles.</p>
+        <p class="learn-note">🎓 The Moon always keeps the same face toward Earth, so from the near side Earth hangs almost still in the sky — it only wobbles a few degrees (called <em>libration</em>). From the far side Earth is never visible, so landers there need a relay satellite (China's Queqiao-2 did this for Chang'e-6). The Sun, on the other hand, crawls across the sky so slowly that sunrise to sunset takes about two Earth weeks.</p>
+      </div>
+
+      <!-- Power & Communications assessment -->
+      <div class="card power-card">
+        <div class="card-head">
+          <div>
+            <span class="card-tag">POWER &amp; COMMUNICATIONS ASSESSMENT</span>
+            <h3>Is This Site–Date Combination Viable?</h3>
+          </div>
+          <span id="viability-pill" class="stay-pill">--</span>
+        </div>
+        <div class="power-grid">
+          <div class="m-box"><span class="m-label">SOLAR FLUX AT MOON</span><strong id="pw-flux">--</strong><small>Top of (no) atmosphere</small></div>
+          <div class="m-box"><span class="m-label">HORIZONTAL PANEL</span><strong id="pw-horiz">--</strong><small id="pw-horiz-pct">--</small></div>
+          <div class="m-box"><span class="m-label">VERTICAL PANEL (AZ-TRACKING)</span><strong id="pw-vert">--</strong><small id="pw-vert-pct">--</small></div>
+          <div class="m-box"><span class="m-label">SUNLIGHT REMAINING</span><strong id="pw-sun-left">--</strong><small id="pw-sun-cycle">--</small></div>
+        </div>
+        <div class="bar-list">
+          <div class="bar-row"><span>Sunlit (next 30 d)</span><div class="bar"><i id="bar-sun"></i></div><b id="bar-sun-val">--</b></div>
+          <div class="bar-row"><span>Earth in view ≥2° (next 30 d)</span><div class="bar"><i id="bar-earth" class="earth"></i></div><b id="bar-earth-val">--</b></div>
+          <div class="bar-row"><span>Power + Direct-to-Earth (next 30 d)</span><div class="bar"><i id="bar-both" class="both"></i></div><b id="bar-both-val">--</b></div>
+        </div>
+        <ul id="viability-checks" class="checks"></ul>
+        <p class="window-summary tiny">Panel figures are ideal irradiance on a sunlit panel (W/m²) before cell efficiency, dust and temperature losses. Power + DTE = Sun &gt; 0.5° and Earth &gt; 2° at the same time.</p>
+        <p class="learn-note">🎓 Solar panels make the most power when sunlight hits them face-on. Near the poles the Sun stays close to the horizon, so a flat panel gets very little light — that's why polar rovers like VIPER use tall, vertical panels. And with no atmosphere, the sunlight reaching the Moon (~1,361 W/m²) is stronger than on Earth's surface.</p>
       </div>
 
       <!-- Exact Landing Windows & Surface Stay Duration -->
@@ -211,19 +302,52 @@
         <div id="windows-list" class="windows-list"></div>
       </div>
 
-      <!-- 29.5-Day Solar Elevation & Illumination Timeline -->
+      <!-- Timeline: 30-day Sun/Earth elevation & 12-month seasonal view -->
       <div class="card chart-card">
         <div class="card-head">
           <div>
-            <span class="card-tag">29.53-DAY SYNODIC ILLUMINATION PROFILE</span>
-            <h3>Solar Elevation &amp; Landing Hazard Zone</h3>
+            <span class="card-tag">TEMPORAL DYNAMICS</span>
+            <h3 id="chart-title">30-Day Sun &amp; Earth Elevation Timeline</h3>
           </div>
-          <span class="legend-inline">
-            <i class="lg-opt"></i> Optimal Touchdown (5°–28°)
-            <i class="lg-day"></i> Daylight Ops
-          </span>
+          <div class="seg" role="group" aria-label="Timeline range">
+            <button id="tl-30d" type="button" class="seg-btn active" aria-pressed="true">30 Days</button>
+            <button id="tl-12m" type="button" class="seg-btn" aria-pressed="false">12 Months</button>
+          </div>
         </div>
-        <canvas id="solar-chart" width="520" height="135"></canvas>
+        <div class="chart-wrap">
+          <canvas id="solar-chart" width="1040" height="300" role="img" aria-label="Timeline chart"></canvas>
+          <div id="chart-tip" class="chart-tip" hidden></div>
+        </div>
+        <div id="chart-legend" class="legend-inline wrap">
+          <span><i class="lg-sun"></i> Sun elevation</span>
+          <span><i class="lg-earth"></i> Earth elevation</span>
+          <span><i class="lg-opt"></i> Touchdown band</span>
+          <span><i class="lg-both"></i> Power + DTE window</span>
+          <span><i class="lg-night"></i> Night</span>
+          <span class="hint">Click the chart to jump to that moment.</span>
+        </div>
+        <p class="learn-note">🎓 Landers usually touch down shortly after local sunrise: the low Sun casts long shadows that help cameras spot boulders and craters, and the spacecraft then gets the whole ~two-week day of solar power. The 12-month view shows "lunar seasons" — the Moon's axis is tilted only 1.5°, so seasons are tiny, but at the poles that small tilt decides whether a crater rim is lit or dark.</p>
+      </div>
+
+      <!-- Site comparison -->
+      <div class="card compare-card">
+        <div class="card-head">
+          <div>
+            <span class="card-tag">SITE COMPARISON</span>
+            <h3>Side-by-Side Trade-offs at the Selected Date</h3>
+          </div>
+          <div class="compare-nav">
+            <button id="cmp-prev" type="button" class="mini-btn" title="Previous compared site">◀</button>
+            <button id="cmp-next" type="button" class="mini-btn" title="Next compared site">▶</button>
+            <button id="cmp-clear" type="button" class="mini-btn" title="Remove all sites">Clear</button>
+          </div>
+        </div>
+        <div id="compare-empty" class="window-summary">Add up to 4 sites with <b>＋ Add Site to Comparison</b> (or use the quick-add buttons below) to compare sunlight, power, Earth visibility, terrain and verdicts side by side. Use ◀ ▶ to step through them one at a time.</div>
+        <div class="compare-quick" id="compare-quick"></div>
+        <div class="table-scroll">
+          <table id="compare-table" class="compare-table" hidden></table>
+        </div>
+        <p class="learn-note">🎓 There is no perfect landing site. Polar sites offer water ice and long sunlight, but the Sun is low and Earth can dip below the horizon; equatorial near-side sites have Earth always overhead but face ~two weeks of freezing night. Comparing sites shows these trade-offs.</p>
       </div>
 
       <!-- Missions at this Phase & Coordinate Region -->
@@ -245,5 +369,6 @@
   </footer>
 
   <script src="app.js" defer></script>
+  <script src="planner.js" defer></script>
 </body>
 </html>
