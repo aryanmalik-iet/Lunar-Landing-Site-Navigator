@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ARTEMIS // LUNAR LANDING & MISSION WINDOW PLANNER — NASA Space Apps</title>
+  <meta name="description" content="Interactive 3D Lunar Mission & Landing Feasibility Planner powered by NASA SVS Dial-A-Moon, LRO/LOLA elevation data, and Selenographic Ephemeris." />
+  <link rel="preconnect" href="https://svs.gsfc.nasa.gov" crossorigin />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" defer></script>
+</head>
+<body>
+  <canvas id="stars" aria-hidden="true"></canvas>
+
+  <!-- TOP TELEMETRY BAR -->
+  <header class="topbar">
+    <div class="brand-group">
+      <span class="nasa-badge">NASA SPACE APPS</span>
+      <span class="brand">SELENE<span>//OPS</span></span>
+      <span class="subtitle">Lunar Landing Feasibility &amp; Window Planner</span>
+    </div>
+
+    <div class="telemetry-bar">
+      <div class="t-item">
+        <span class="t-label">MISSION CLOCK</span>
+        <time id="clock" class="t-val">--:--:-- UTC</time>
+      </div>
+      <div class="t-item">
+        <span class="t-label">GLOBAL PHASE</span>
+        <span id="g-phase" class="t-val">--</span>
+      </div>
+      <div class="t-item">
+        <span class="t-label">SUB-SOLAR PT</span>
+        <span id="g-subsolar" class="t-val">--</span>
+      </div>
+      <div class="t-item">
+        <span class="t-label">EARTH DIST</span>
+        <span id="g-dist" class="t-val">--</span>
+      </div>
+      <div class="t-item live-pill">
+        <i></i> <span id="feed-status">LIVE EPHEMERIS</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="workspace">
+    <!-- LEFT: 3D INTERACTIVE GLOBE + CONTROLS -->
+    <section class="globe-stage">
+      <div class="globe-overlay-top">
+        <div>
+          <p class="eyebrow">LRO / LOLA Selenographic 3D Twin</p>
+          <h1>Select a Lunar Landing Site</h1>
+          <p class="instruction">Click anywhere on the 3D Moon or choose a mission marker to compute landing feasibility, solar windows, and surface stay duration.</p>
+        </div>
+        <div class="view-modes">
+          <button id="btn-highlight-current" class="chip-btn active" type="button" title="Highlight active/recent lunar missions on the 3D Moon">★ Highlight Current Missions</button>
+          <button id="btn-reset-cam" class="chip-btn" type="button">Reset View</button>
+        </div>
+      </div>
+
+      <!-- Marker Color Legend -->
+      <div class="globe-legend" aria-label="3D Globe Marker Legend">
+        <span><i class="dot-current"></i> Current / Recent Active Mission (Pulsing Beacon)</span>
+        <span><i class="dot-planned"></i> Upcoming / Artemis Candidate Region</span>
+        <span><i class="dot-historic"></i> Historic Landed Heritage Site</span>
+        <span><i class="dot-region"></i> Selected Lunar Region Boundary (3D Highlight)</span>
+      </div>
+
+      <!-- 3D Viewport (Enlarged) -->
+      <div id="globe-container" class="globe-viewport" aria-label="Interactive 3D Moon Globe">
+        <canvas id="moon-canvas"></canvas>
+        <div id="marker-tooltip" class="marker-tooltip" hidden></div>
+        <div id="current-mission-labels" class="current-mission-labels" aria-hidden="true"></div>
+
+        <!-- Floating Active Region HUD Banner on 3D Globe -->
+        <div id="region-hud" class="region-hud" hidden>
+          <div class="rh-top">
+            <span class="rh-tag">HIGHLIGHTED LUNAR REGION</span>
+            <button id="btn-clear-region" type="button" class="rh-close" title="Clear region highlight">✕</button>
+          </div>
+          <strong id="rh-name">--</strong>
+          <span id="rh-bounds" class="rh-bounds">--</span>
+          <p id="rh-desc" class="rh-desc">--</p>
+        </div>
+      </div>
+
+      <!-- Bottom Controls: Step 1 (Select Region) -> Step 2 (Enter Coords / Drop Pin) -> Step 3 (Time & Presets) -->
+      <div class="globe-controls">
+        <!-- STEP 1: Lunar Region Explorer & 3D Boundary Highlighter -->
+        <div class="region-selector-bar">
+          <div class="coord-form-head">
+            <span class="qs-label">STEP 1 — EXPLORE &amp; HIGHLIGHT A LUNAR REGION ON 3D GLOBE:</span>
+            <span id="region-type-badge" class="region-type-badge">All Provinces</span>
+          </div>
+          <div class="region-select-row">
+            <select id="region-select" class="region-select" aria-label="Select a Lunar Region to Highlight on 3D Moon">
+              <option value="">-- Select a Lunar Region / Mare / Highland / Basin to Highlight on 3D Moon --</option>
+            </select>
+            <button id="btn-drop-region-center" class="mini-btn" type="button">Drop Pin at Region Center</button>
+          </div>
+        </div>
+
+        <!-- STEP 2: Manual Latitude / Longitude Coordinate Input -->
+        <form id="coord-form" class="coord-form" autocomplete="off">
+          <div class="coord-form-head">
+            <span class="qs-label">STEP 2 — ENTER EXACT COORDINATES OR CLICK INSIDE REGION TO DROP PIN:</span>
+            <span id="coord-error" class="coord-error" hidden></span>
+          </div>
+          <div class="coord-inputs">
+            <label class="c-field">
+              <span>LATITUDE (-90° S to +90° N)</span>
+              <input id="input-lat" type="text" placeholder="e.g. -84.9 or 84.9S" value="-84.90" required />
+            </label>
+            <label class="c-field">
+              <span>LONGITUDE (-180° W to +180° E)</span>
+              <input id="input-lon" type="text" placeholder="e.g. 12.9 or 12.9E" value="12.90" required />
+            </label>
+            <button id="btn-drop-pin" class="drop-btn" type="submit">⊕ DROP TARGET PIN</button>
+          </div>
+        </form>
+
+        <div class="time-scrubber">
+          <div class="scrubber-head">
+            <label for="time-offset">SIMULATION EPOCH OFFSET: <strong id="offset-label">NOW (LIVE)</strong></label>
+            <div class="scrubber-actions">
+              <button id="btn-now" class="mini-btn" type="button">LIVE NOW</button>
+              <button id="btn-play" class="mini-btn" type="button">▶ SIMULATE LUNAR MONTH</button>
+            </div>
+          </div>
+          <input id="time-offset" type="range" min="0" max="708" step="2" value="0" />
+          <div class="scrubber-ticks">
+            <span>Now</span>
+            <span>+7d (Quarter)</span>
+            <span>+14.8d (Half Cycle)</span>
+            <span>+22d</span>
+            <span>+29.5d (1 Synodic Month)</span>
+          </div>
+        </div>
+
+        <div class="quick-sites">
+          <div class="qs-header">
+            <span class="qs-label">MISSION &amp; SITE FILTER:</span>
+            <div class="filter-pills">
+              <button type="button" class="filter-pill active" data-filter="all">All Sites</button>
+              <button type="button" class="filter-pill" data-filter="current">★ Current Missions Only</button>
+              <button type="button" class="filter-pill" data-filter="planned">Upcoming / Artemis</button>
+              <button type="button" class="filter-pill" data-filter="historic">Historic Landings</button>
+            </div>
+          </div>
+          <div id="mission-chips" class="chip-row"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT: SCIENTIST MISSION ANALYSIS DASHBOARD -->
+    <aside class="analysis-panel" aria-live="polite">
+      <!-- Selected Coordinate & Go/No-Go Header -->
+      <div class="card decision-card">
+        <div class="decision-top">
+          <div>
+            <span class="card-tag">SELECTED SELENOGRAPHIC TARGET</span>
+            <h2 id="site-title">Shackleton Connecting Ridge (Artemis III)</h2>
+            <p id="site-coords" class="coords-readout">89.54° S, 129.78° W &middot; South Polar Highlands</p>
+          </div>
+          <div id="verdict-badge" class="verdict-badge go">
+            <span class="verdict-label">LANDING STATUS</span>
+            <strong id="verdict-text">GO</strong>
+          </div>
+        </div>
+        <p id="verdict-reason" class="verdict-reason">
+          Evaluating local solar elevation, Earth line-of-sight communications, and LOLA terrain slope...
+        </p>
+
+        <div class="metrics-grid">
+          <div class="m-box">
+            <span class="m-label">LOCAL SUN ELEV</span>
+            <strong id="m-sun-elev">--°</strong>
+            <small id="m-sun-state">--</small>
+          </div>
+          <div class="m-box">
+            <span class="m-label">EST. SURFACE TEMP (MODEL)</span>
+            <strong id="m-temp">-- K</strong>
+            <small id="m-temp-c">-- °C</small>
+          </div>
+          <div class="m-box">
+            <span class="m-label">EARTH COMMS (DTE)</span>
+            <strong id="m-earth">--</strong>
+            <small id="m-earth-elev">--</small>
+          </div>
+          <div class="m-box">
+            <span class="m-label">REGIONAL SLOPE (LOLA)</span>
+            <strong id="m-slope">--°</strong>
+            <small id="m-terrain">--</small>
+          </div>
+        </div>
+      </div>
+
+      <!-- Exact Landing Windows & Surface Stay Duration -->
+      <div class="card windows-card">
+        <div class="card-head">
+          <div>
+            <span class="card-tag">EPHEMERIS WINDOW CALCULATOR</span>
+            <h3>When Can We Land &amp; For How Many Days?</h3>
+          </div>
+          <span id="stay-pill" class="stay-pill">-- Days Max Stay</span>
+        </div>
+        <p id="window-summary" class="window-summary">--</p>
+        <p class="window-summary" style="font-size:10px;opacity:.8">Planning assumptions, not NASA requirements: touchdown when Sun is 5°-28° above the horizon (1.5°-16° near the poles); daylight = Sun &gt; 0.5°. Sun geometry from NASA SVS Dial-A-Moon.</p>
+
+        <div id="windows-list" class="windows-list"></div>
+      </div>
+
+      <!-- 29.5-Day Solar Elevation & Illumination Timeline -->
+      <div class="card chart-card">
+        <div class="card-head">
+          <div>
+            <span class="card-tag">29.53-DAY SYNODIC ILLUMINATION PROFILE</span>
+            <h3>Solar Elevation &amp; Landing Hazard Zone</h3>
+          </div>
+          <span class="legend-inline">
+            <i class="lg-opt"></i> Optimal Touchdown (5°–28°)
+            <i class="lg-day"></i> Daylight Ops
+          </span>
+        </div>
+        <canvas id="solar-chart" width="520" height="135"></canvas>
+      </div>
+
+      <!-- Missions at this Phase & Coordinate Region -->
+      <div class="card missions-card">
+        <div class="card-head">
+          <div>
+            <span class="card-tag">NASA &amp; INTERNATIONAL LUNAR MANIFEST</span>
+            <h3>Missions Active in This Region &amp; Phase</h3>
+          </div>
+        </div>
+        <div id="missions-list" class="missions-list"></div>
+      </div>
+    </aside>
+  </main>
+
+  <footer>
+    <span>Data: NASA SVS Dial-A-Moon (Sun/Earth geometry) &middot; NASA SVS CGI Moon Kit #4720 (LROC WAC color, LOLA elevation) &middot; mission data from public NASA/agency records</span>
+    <span>Not an official NASA product &middot; No API key required</span>
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
