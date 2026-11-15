@@ -832,6 +832,220 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove("show"), 3200);
   }
 
+  /* ---------------- Social Wellness, High/Low Tides & Earth Public Impact ---------------- */
+  const TIDE_PORTS = {
+    mumbai:     { name: "Mumbai Harbor, India",      lon: 72.84,  h0: 2.51, m2: 1.62, s2: 0.64, k1: 0.42, lagH: 0.42 },
+    sundarbans: { name: "Sundarbans / Kolkata, IN",  lon: 88.08,  h0: 2.85, m2: 1.84, s2: 0.78, k1: 0.35, lagH: 1.15 },
+    chennai:    { name: "Chennai Coast, India",      lon: 80.29,  h0: 0.65, m2: 0.44, s2: 0.18, k1: 0.12, lagH: 0.65 },
+    kochi:      { name: "Kochi / Arabian Sea, IN",   lon: 76.27,  h0: 0.58, m2: 0.34, s2: 0.14, k1: 0.18, lagH: 0.85 },
+    miami:      { name: "Miami / Biscayne Bay, US",  lon: -80.13, h0: 0.48, m2: 0.37, s2: 0.08, k1: 0.06, lagH: 0.55 },
+    tokyo:      { name: "Tokyo Bay, Japan",          lon: 139.77, h0: 1.10, m2: 0.56, s2: 0.26, k1: 0.24, lagH: 0.72 },
+    london:     { name: "Thames / London, UK",       lon: 0.05,   h0: 3.65, m2: 2.45, s2: 0.85, k1: 0.18, lagH: 1.38 }
+  };
+
+  function calcAstronomicalTideM(ms, port, ephRef) {
+    const dtHours = (ms - ephRef.simMs) / HOUR;
+    const distKm = ephRef.distKm;
+    // Lunar gravitational tractive force scales as (r_mean / r)^3
+    const fLunar = Math.pow(384400 / distKm, 3);
+    // Solar hour angle at port longitude (deg)
+    const utcFrac = (((ms % DAY) + DAY) % DAY) / DAY;
+    const solarHA = utcFrac * 360 - 180 + port.lon - port.lagH * 15;
+    // Lunar elongation progresses at 360 / 29.530589 = 12.1907 deg/day (0.50795 deg/h)
+    const elongDeg = (ephRef.ageDays / S.SYNODIC_DAYS) * 360 + dtHours * 0.50795;
+    const lunarHA = solarHA - elongDeg;
+
+    return (
+      port.h0 +
+      port.m2 * fLunar * Math.cos(d2r(2 * lunarHA)) +
+      port.s2 * Math.cos(d2r(2 * solarHA)) +
+      port.k1 * Math.cos(d2r(lunarHA + 15))
+    );
+  }
+
+  function updateSocialWellnessAndTides(ctx) {
+    const cv = $("tide-canvas");
+    if (!cv) return;
+    const portKey = ($("tide-port-select") && $("tide-port-select").value) || "mumbai";
+    const port = TIDE_PORTS[portKey] || TIDE_PORTS.mumbai;
+    const simMs = ctx.simDate.getTime();
+    const eph = ctx.eph;
+    const ephRef = { simMs, distKm: eph.distance || 384400, ageDays: eph.age || 0 };
+
+    // 1. Sample tide elevation from -2h to +26h in 10-minute steps (169 samples)
+    const STEP_MS = 10 * 60 * 1000;
+    const pts = [];
+    for (let k = -12; k <= 156; k++) {
+      const t = simMs + k * STEP_MS;
+      pts.push({ t, h: calcAstronomicalTideM(t, port, ephRef), dtH: (k * 10) / 60 });
+    }
+
+    const nowIdx = 12;
+    const hNow = pts[nowIdx].h;
+    const risingTide = pts[nowIdx + 1].h >= hNow;
+
+    let nextHigh = null, nextLow = null;
+    for (let i = nowIdx + 1; i < pts.length - 1; i++) {
+      const prev = pts[i - 1].h, cur = pts[i].h, nxt = pts[i + 1].h;
+      if (!nextHigh && cur >= prev && cur >= nxt && cur > prev + 1e-5) nextHigh = pts[i];
+      if (!nextLow && cur <= prev && cur <= nxt && cur < prev - 1e-5) nextLow = pts[i];
+      if (nextHigh && nextLow) break;
+    }
+
+    // 2. Compute gravitational tidal force factor & Spring/Neap/King Tide regime
+    const fLunar = Math.pow(384400 / ephRef.distKm, 3);
+    const elongRad = d2r((ephRef.ageDays / S.SYNODIC_DAYS) * 360);
+    const syzygyAlign = Math.abs(Math.cos(elongRad)); // 1.0 at New/Full Moon, 0.0 at Quarter Moon
+    const combinedForceIndex = (fLunar + 0.4605 * Math.cos(2 * elongRad)) / 1.0; // relative to mean lunar alone
+    const forcePctVsMean = ((fLunar - 1) * 100);
+
+    let regimeName = "Moderate Semidiurnal Tide";
+    let pillClass = "go";
+    let safetyLabel = "SAFE HARBOR OPS";
+    let safetyNote = `${risingTide ? "Flood tide rising" : "Ebb tide falling"} (${hNow.toFixed(2)} m now)`;
+
+    if (syzygyAlign > 0.85 && ephRef.distKm < 366000) {
+      regimeName = "PERIGEAN KING TIDE ALERT";
+      pillClass = "nogo";
+      safetyLabel = "COASTAL FLOOD WATCH";
+      safetyNote = "Perigee + Full/New Moon surge: high-water inundation risk";
+    } else if (syzygyAlign > 0.80) {
+      regimeName = "SPRING TIDE (HIGH RANGE)";
+      pillClass = "caution";
+      safetyLabel = "STRONG TIDAL CURRENTS";
+      safetyNote = "Spring tide alignment — caution for small fishing vessels";
+    } else if (syzygyAlign < 0.35) {
+      regimeName = "NEAP TIDE (CALM RANGE)";
+      pillClass = "go";
+      safetyLabel = "CALM NEAP WATERS";
+      safetyNote = "Minimal tidal currents — ideal for coastal fishing & diving";
+    }
+
+    const pill = $("tide-alert-pill");
+    if (pill) {
+      pill.className = "stay-pill " + pillClass;
+      pill.textContent = regimeName;
+    }
+
+    $("tw-high-time").textContent = nextHigh ? `in ${fmtDur(nextHigh.t - simMs)}` : "--";
+    $("tw-high-height").textContent = nextHigh
+      ? `Crest ${nextHigh.h.toFixed(2)} m at ${fmtDate(nextHigh.t).slice(11)}`
+      : "--";
+
+    $("tw-low-time").textContent = nextLow ? `in ${fmtDur(nextLow.t - simMs)}` : "--";
+    $("tw-low-height").textContent = nextLow
+      ? `Trough ${nextLow.h.toFixed(2)} m at ${fmtDate(nextLow.t).slice(11)}`
+      : "--";
+
+    $("tw-force").textContent = `${(combinedForceIndex * 100).toFixed(0)}% Tide Index`;
+    $("tw-regime").textContent = `Lunar pull ${forcePctVsMean >= 0 ? "+" : ""}${forcePctVsMean.toFixed(1)}% (${Math.round(ephRef.distKm).toLocaleString()} km)`;
+
+    $("tw-safety").textContent = safetyLabel;
+    $("tw-safety-note").textContent = safetyNote;
+
+    // 3. Nocturnal Moonlight Illuminance on Earth (lux) & Human Circadian / Ecological Wellness
+    // Full Moon at mean distance produces ~0.25 lux; scales with phase opposition surge & (384400/r)^2
+    const phaseFrac = clamp(eph.phase / 100, 0, 1);
+    const moonLux = 0.0008 + 0.265 * Math.pow(phaseFrac, 2.4) * Math.pow(384400 / ephRef.distKm, 2);
+    $("tw-lux").textContent = `${moonLux.toFixed(3)} lux`;
+    $("tw-lux-note").textContent =
+      moonLux > 0.12
+        ? "Bright moonlight — aids off-grid night visibility & SAR"
+        : moonLux > 0.03
+        ? "Moderate moonlight — balanced night visibility"
+        : "Dark-sky window — ideal for astronomy & deep circadian rest";
+
+    const waxing = ephRef.ageDays < S.SYNODIC_DAYS / 2;
+    let ecoTitle = "Balanced Biorhythm";
+    let ecoNote = "Normal nocturnal melatonin & intertidal cycle";
+    if (eph.phase > 88) {
+      ecoTitle = "Peak Spawning & High-Light Phase";
+      ecoNote = "Coral/intertidal spawning window; bright night may delay human sleep onset by ~15–25 min";
+    } else if (eph.phase < 12) {
+      ecoTitle = "Dark-Sky Melatonin Peak";
+      ecoNote = "Deepest nocturnal darkness for human sleep recovery & nocturnal pollinator navigation";
+    } else if (waxing) {
+      ecoTitle = "Waxing Sap & Moisture Phase";
+      ecoNote = "Increasing evening moonlight; traditional coastal sowing & intertidal harvesting window";
+    } else {
+      ecoTitle = "Waning Recovery Phase";
+      ecoNote = "Late-night moonrise; favorable for early-evening circadian sleep onset";
+    }
+    $("tw-wellness").textContent = ecoTitle;
+    $("tw-wellness-note").textContent = ecoNote;
+
+    $("tw-public-advisory").textContent =
+      `Public Wellness Summary (${port.name}): Tide is currently ${hNow.toFixed(2)} m and ${risingTide ? "RISING toward High Tide" : "FALLING toward Low Tide"}. ` +
+      (nextHigh ? `Next High Tide (${nextHigh.h.toFixed(2)} m) arrives in ${fmtDur(nextHigh.t - simMs)} (${fmtDate(nextHigh.t)}). ` : "") +
+      (nextLow ? `Next Low Tide (${nextLow.h.toFixed(2)} m) arrives in ${fmtDur(nextLow.t - simMs)} (${fmtDate(nextLow.t)}). ` : "") +
+      `Earth–Moon distance (${Math.round(ephRef.distKm).toLocaleString()} km) and ${eph.phase.toFixed(0)}% lunar illumination yield a ${(combinedForceIndex * 100).toFixed(0)}% tidal potential index and ${moonLux.toFixed(3)} lux nocturnal sky brightness.`;
+
+    // 4. Draw 24-hour High & Low Tide curve on #tide-canvas
+    const g = cv.getContext("2d"), W = cv.width, H = cv.height;
+    g.clearRect(0, 0, W, H);
+    const padL = 56, padR = 18, padT = 18, padB = 30;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const slice = pts.slice(nowIdx, nowIdx + 145); // 0 to +24h
+    const minH = Math.min(...slice.map((p) => p.h)) - 0.25;
+    const maxH = Math.max(...slice.map((p) => p.h)) + 0.25;
+    const xOf = (dtH) => padL + (dtH / 24) * plotW;
+    const yOf = (h) => padT + ((maxH - h) / Math.max(0.1, maxH - minH)) * plotH;
+
+    // Mean sea level reference line
+    const yMean = yOf(port.h0);
+    g.strokeStyle = "rgba(255,255,255,0.16)";
+    g.setLineDash([4, 4]);
+    g.beginPath(); g.moveTo(padL, yMean); g.lineTo(padL + plotW, yMean); g.stroke();
+    g.setLineDash([]);
+    g.fillStyle = "#8b9bb8"; g.font = "600 12px Inter, sans-serif";
+    g.fillText(`${maxH.toFixed(1)}m`, 8, padT + 10);
+    g.fillText(`MSL ${port.h0.toFixed(1)}m`, 4, clamp(yMean + 4, padT + 22, H - padB - 12));
+    g.fillText(`${minH.toFixed(1)}m`, 8, H - padB - 2);
+
+    // Shaded water fill under tide curve
+    const grad = g.createLinearGradient(0, padT, 0, padT + plotH);
+    grad.addColorStop(0, "rgba(56, 189, 248, 0.36)");
+    grad.addColorStop(1, "rgba(16, 185, 129, 0.04)");
+    g.fillStyle = grad;
+    g.beginPath();
+    g.moveTo(xOf(0), padT + plotH);
+    slice.forEach((p) => g.lineTo(xOf(p.dtH), yOf(p.h)));
+    g.lineTo(xOf(24), padT + plotH);
+    g.closePath();
+    g.fill();
+
+    // Tide wave stroke
+    g.strokeStyle = "#38bdf8";
+    g.lineWidth = 2.6;
+    g.beginPath();
+    slice.forEach((p, idx) => {
+      const x = xOf(p.dtH), y = yOf(p.h);
+      if (idx === 0) g.moveTo(x, y); else g.lineTo(x, y);
+    });
+    g.stroke();
+
+    // Mark High Tide & Low Tide extrema along the 24h curve
+    for (let i = 1; i < slice.length - 1; i++) {
+      const prev = slice[i - 1].h, cur = slice[i].h, nxt = slice[i + 1].h;
+      const isHigh = cur >= prev && cur >= nxt && cur > prev + 1e-5;
+      const isLow = cur <= prev && cur <= nxt && cur < prev - 1e-5;
+      if (isHigh || isLow) {
+        const x = xOf(slice[i].dtH), y = yOf(cur);
+        g.fillStyle = isHigh ? "#10b981" : "#fbbf24";
+        g.beginPath(); g.arc(x, y, 5, 0, Math.PI * 2); g.fill();
+        g.font = "700 12px Inter, sans-serif";
+        g.fillText(`${isHigh ? "▲ HIGH" : "▼ LOW"} ${cur.toFixed(2)}m (+${slice[i].dtH.toFixed(1)}h)`, clamp(x - 45, padL + 4, W - 165), isHigh ? Math.max(padT + 14, y - 8) : Math.min(padT + plotH - 4, y + 16));
+      }
+    }
+
+    // X-axis hour ticks
+    g.fillStyle = "#8b9bb8"; g.font = "600 12px Inter, sans-serif";
+    for (let h = 0; h <= 24; h += 4) {
+      const x = xOf(h);
+      g.fillText(h === 0 ? "NOW" : `+${h}h`, x - 12, H - 8);
+    }
+  }
+
   /* ---------------- Main hook (called by app.js after every analysis update) ---------------- */
   S.afterUpdate = (ctx) => {
     state.ctx = ctx;
@@ -841,6 +1055,7 @@
 
     updateSky(ctx, ser, prof);
     updatePower(ctx, ser, prof);
+    updateSocialWellnessAndTides(ctx);
     if (state.tlMode === "12m") drawSeasons(ctx); else drawTimeline30(ctx, ser, prof);
     renderCompare(ser);
     if (state.view === "2d") drawMap();
@@ -974,4 +1189,9 @@
       .map((m) => ({ id: m.id, name: m.name, lat: m.lat, lon: m.lon }));
     state.cmpIndex = -1; saveCompare(); S.refresh();
   });
+
+  const tidePortSel = $("tide-port-select");
+  if (tidePortSel) {
+    tidePortSel.addEventListener("change", () => S.refresh());
+  }
 })();

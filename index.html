@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ARTEMIS // LUNAR LANDING & MISSION WINDOW PLANNER — NASA Space Apps</title>
-  <meta name="description" content="Interactive 3D Lunar Mission & Landing Feasibility Planner powered by NASA SVS Dial-A-Moon, LRO/LOLA elevation data, and Selenographic Ephemeris." />
+  <title>IRIP— Lunar Landing &amp; Mission Window Planner</title>
+  <meta name="description" content="INTERSTELLER PARK ROBOTICS AND INNOVATION — Interactive 3D Lunar Mission, Landing Feasibility &amp; Earth Social Wellness Tide Planner powered by NASA SVS Dial-A-Moon and LRO/LOLA data." />
   <link rel="preconnect" href="https://svs.gsfc.nasa.gov" crossorigin />
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" defer></script>
@@ -16,8 +16,8 @@
   <header class="topbar">
     <div class="brand-group">
       <span class="nasa-badge">NASA SPACE APPS</span>
-      <span class="brand">SELENE<span>//OPS</span></span>
-      <span class="subtitle">Lunar Landing Feasibility &amp; Window Planner</span>
+      <span class="brand"> <span>INTERSTELLER ROBOTICS AND INNOVATION PARK</span></span>
+      <span class="subtitle">Lunar Landing Feasibility &amp; Earth Social Wellness Planner</span>
     </div>
 
     <div class="telemetry-bar">
@@ -300,6 +300,69 @@
         <p class="window-summary" style="font-size:10px;opacity:.8">Planning assumptions, not NASA requirements: touchdown when Sun is 5°-28° above the horizon (1.5°-16° near the poles); daylight = Sun &gt; 0.5°. Sun geometry from NASA SVS Dial-A-Moon.</p>
 
         <div id="windows-list" class="windows-list"></div>
+      </div>
+
+      <!-- Earth Social Wellness, High/Low Tide Predictor & Coastal Public Safety Monitor -->
+      <div class="card wellness-card">
+        <div class="card-head">
+          <div>
+            <span class="card-tag">🌍 SOCIAL WELLNESS &amp; PUBLIC BENEFIT ON EARTH</span>
+            <h3>High/Low Tide Predictor, Coastal Flood Early Warning &amp; Human Biorhythms</h3>
+          </div>
+          <span id="tide-alert-pill" class="stay-pill">--</span>
+        </div>
+
+        <div class="wellness-toolbar">
+          <label class="c-field" style="flex:1">
+            <span>SELECT COASTAL COMMUNITY / HARBOR FOR HIGH &amp; LOW TIDE FORECAST</span>
+            <select id="tide-port-select" class="region-select" aria-label="Select Coastal Community for Tide Forecast">
+              <option value="mumbai">Mumbai Harbor, India (18.94°N, 72.84°E · Mean Spring Range 4.4 m)</option>
+              <option value="sundarbans">Sundarbans / Kolkata Coast, India (21.65°N, 88.08°E · Range 4.9 m)</option>
+              <option value="chennai">Chennai / Bay of Bengal, India (13.08°N, 80.29°E · Range 1.2 m)</option>
+              <option value="kochi">Kochi / Arabian Sea, India (9.97°N, 76.27°E · Range 1.0 m)</option>
+              <option value="miami">Miami / Biscayne Bay, USA (25.77°N, 80.13°W · Range 0.9 m)</option>
+              <option value="tokyo">Tokyo Bay, Japan (35.65°N, 139.77°E · Range 1.9 m)</option>
+              <option value="london">London / Thames Estuary, UK (51.50°N, 0.05°E · Range 6.6 m)</option>
+            </select>
+          </label>
+        </div>
+
+        <canvas id="tide-canvas" width="1040" height="220" role="img" aria-label="24-hour coastal high and low tide curve"></canvas>
+
+        <div class="wellness-grid">
+          <div class="m-box">
+            <span class="m-label">🌊 NEXT HIGH TIDE</span>
+            <strong id="tw-high-time">--</strong>
+            <small id="tw-high-height">--</small>
+          </div>
+          <div class="m-box">
+            <span class="m-label">🏖 NEXT LOW TIDE</span>
+            <strong id="tw-low-time">--</strong>
+            <small id="tw-low-height">--</small>
+          </div>
+          <div class="m-box">
+            <span class="m-label">⚡ LUNAR TIDAL FORCE</span>
+            <strong id="tw-force">--</strong>
+            <small id="tw-regime">--</small>
+          </div>
+          <div class="m-box">
+            <span class="m-label">🛟 FISHERMAN &amp; COAST SAFETY</span>
+            <strong id="tw-safety">--</strong>
+            <small id="tw-safety-note">--</small>
+          </div>
+          <div class="m-box">
+            <span class="m-label">🌙 NIGHT MOONLIGHT LUX</span>
+            <strong id="tw-lux">--</strong>
+            <small id="tw-lux-note">--</small>
+          </div>
+          <div class="m-box">
+            <span class="m-label">🌱 ECOLOGY &amp; SLEEP WELLNESS</span>
+            <strong id="tw-wellness">--</strong>
+            <small id="tw-wellness-note">--</small>
+          </div>
+        </div>
+        <p id="tw-public-advisory" class="verdict-reason" style="margin-bottom:4px">--</p>
+        <p class="learn-note">🎓 How the Moon helps people on Earth every day: The Moon's gravity pulls Earth's oceans into two tidal bulges, creating two high tides and two low tides every ~24 hours 50 minutes. When the Moon is closest to Earth (perigee, ~356,500 km) and lined up with the Sun (New or Full Moon), "King Tides" can flood low-lying coastal roads and mangroves. Predicting these cycles protects fishermen, coastal families, marine ecosystems, and disaster-response teams.</p>
       </div>
 
       <!-- Timeline: 30-day Sun/Earth elevation & 12-month seasonal view -->
